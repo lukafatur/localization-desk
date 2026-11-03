@@ -1054,7 +1054,8 @@ async function extractAndTranslate(link, pname, langs, notes, table) {
   const pages = Array.isArray(p.design_content?.pages) ? p.design_content.pages : [];
   if (!pages.length) {
     const hint = typeof p.design_content === "string" ? " Canva returned plain text instead of page data." : "";
-    throw new Error("Couldn't read the pages of this design." + hint + " Make sure it's a design you can edit (not view-only), then try again.");
+    const why = p.transaction_error ? " Canva said: " + p.transaction_error : "";
+    throw new Error("Couldn't read the pages of this design." + hint + why + " Make sure it's a design you can edit (not view-only), then try again.");
   }
   const rows = [];
   pages.forEach((pg, pi) => {
@@ -2158,7 +2159,7 @@ async function bExtract(input) {
   if (tx) { try { await canva("edit-design", { transaction_id:tx, finalize:"cancel" }, "Close the read-only session without changes"); } catch {} }
   const warn = Array.isArray(p.warnings) ? p.warnings : [];
   const pages = Array.isArray(p.design_content?.pages) ? p.design_content.pages : [];
-  if (!pages.length) throw new Error(warn.some(w => w.code === "permission_denied") ? "View-only for your Canva account: it can't be edited, so it can't be localized." : "Couldn't read the pages of this design.");
+  if (!pages.length) throw new Error((warn.some(w => w.code === "permission_denied") ? "View-only for your Canva account: it can't be edited, so it can't be localized." : "Couldn't read the pages of this design.") + (p.transaction_error ? " Canva said: " + p.transaction_error : ""));
   const designId = p.design_metadata?.id || (String(target).match(/D[A-Za-z0-9_-]{10}/) || [])[0];
   if (!designId) throw new Error("Couldn't find the design ID.");
   const rows = [];
@@ -2510,7 +2511,7 @@ async function qtRead(input) {
     rows = s.split("\n").map(x => x.trim()).filter(Boolean).map(text => ({ text, tr:{} }));
     approx = rows.length > 0;
   }
-  return { title, rows, approx, target, pageCount:pages.length };
+  return { title, rows, approx, target, pageCount:pages.length, txErr:p.transaction_error || "" };
 }
 
 async function qtTranslate(d, langs) {
@@ -2576,7 +2577,7 @@ $("#qtBtn").addEventListener("click", async () => {
       try {
         Object.assign(d, await qtRead(d.input));
         if (!d.rows.length) d.note = "No text found in this design.";
-        else if (d.approx) d.note = "View-only access: Canva only gives plain text, so this is one row per line, not per text box.";
+        else if (d.approx) d.note = "View-only access: Canva only gives plain text, so this is one row per line, not per text box." + (d.txErr ? " Canva said: " + d.txErr : "");
         if (d.rows.length && langs.length) { d.status = "tr"; qtRender(); await qtTranslate(d, langs); }
       } catch (e) { d.note = e?.code === "invalid_json" ? "Translation failed: Claude's answer couldn't be read. Try again." : explain(e); }
       d.status = "done"; qtRender();
